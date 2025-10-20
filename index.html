@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tag Manager Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #edit-panel {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        .tag-item {
+            transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+        }
+        .tag-item.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        body.modal-open {
+            overflow: hidden;
+        }
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        .toast {
+            padding: 12px 20px;
+            border-radius: 9999px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast.success { background-color: #28a745; }
+        .toast.error { background-color: #dc3545; }
+        .toast.info { background-color: #17a2b8; }
+        
+        .autocomplete-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .autocomplete-item:hover, .autocomplete-item.active {
+            background-color: #f0f4f8;
+        }
+        .autocomplete-item .tag-name {
+            font-weight: 500;
+        }
+        .autocomplete-item .tag-rating {
+            font-size: 0.8em;
+            color: #6b7280;
+        }
+        .quick-slot-btn {
+            transition: all 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-7xl mx-auto p-4 md:p-8">
+        <div class="bg-white rounded-2xl shadow-lg p-6 md:p-8">
+            <h1 class="text-3xl font-bold text-center text-gray-900 mb-2">Tag Manager Pro</h1>
+            <p class="text-center text-gray-500 mb-6">Your personal tags, history, and sets are saved automatically.</p>
+
+            <div class="relative mb-6">
+                <input type="text" id="tag-input" placeholder="Add a new tag, or multiple separated by commas..." class="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                <div id="autocomplete-container" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 shadow-lg max-h-60 overflow-y-auto"></div>
+            </div>
+
+            <div class="mb-6">
+                <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 min-h-[150px]">
+                    <div id="tags-container" class="leading-relaxed">
+                         <p id="no-tags-message" class="text-gray-400">No tags added yet.</p>
+                    </div>
+                </div>
+                <div class="mt-4 flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-3">
+                        <button id="paste-button" class="bg-blue-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Paste
+                        </button>
+                        <span id="paste-error" class="text-red-500 text-sm hidden">Paste failed. Please use Ctrl+V.</span>
+                    </div>
+                    <div class="flex gap-3 flex-wrap items-center justify-end">
+                        <!-- Quick Slots -->
+                        <div class="flex gap-2 border-r border-gray-300 pr-3">
+                            <button id="quick-slot-1" data-slot="1" class="quick-slot-btn font-mono font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">C1</button>
+                            <button id="quick-slot-2" data-slot="2" class="quick-slot-btn font-mono font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">C2</button>
+                            <button id="quick-slot-3" data-slot="3" class="quick-slot-btn font-mono font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">C3</button>
+                        </div>
+                         <label for="upload-tags-input" class="cursor-pointer bg-teal-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                             Upload File
+                         </label>
+                         <input type="file" id="upload-tags-input" class="hidden" accept=".txt,.csv">
+                         <button id="true-clear-button" class="bg-gray-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-gray-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                             Clear All
+                         </button>
+                         <button id="save-button" class="bg-orange-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-orange-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                             Save & New
+                         </button>
+                        <button id="copy-button" class="bg-green-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            Copy Tags
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panels area -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="flex flex-col gap-6">
+                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 min-h-[200px] flex flex-col">
+                        <div class="flex justify-between items-center mb-3">
+                            <h2 class="text-lg font-semibold text-gray-700">History</h2>
+                            <button id="expand-history-btn" class="hidden text-blue-500 hover:text-blue-700 text-sm font-semibold">View All</button>
+                        </div>
+                        <div id="history-preview-wrapper" class="overflow-hidden relative flex-grow max-h-40">
+                             <div id="history-container" class="flex flex-wrap gap-2">
+                                 <p id="no-history-message" class="text-gray-400 text-sm">Your recently used tags will appear here.</p>
+                             </div>
+                             <div id="history-fade" class="hidden absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none"></div>
+                        </div>
+                    </div>
+                     <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 min-h-[200px] flex flex-col">
+                         <div class="flex justify-between items-center mb-3">
+                             <h2 class="text-lg font-semibold text-gray-700">Saved Sets</h2>
+                              <button id="expand-saved-btn" class="hidden text-blue-500 hover:text-blue-700 text-sm font-semibold">View All</button>
+                         </div>
+                         <div id="saved-preview-wrapper" class="overflow-hidden relative flex-grow">
+                             <div id="saved-container" class="space-y-3">
+                                 <p id="no-saved-message" class="text-gray-400 text-sm">No saved sets yet. Press "Save" to create one.</p>
+                             </div>
+                             <div id="saved-fade" class="hidden absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none"></div>
+                         </div>
+                     </div>
+                </div>
+
+                <div id="edit-panel" class="bg-gray-50 border border-gray-200 rounded-xl p-4 opacity-0 transform scale-95 -translate-x-4 pointer-events-none min-h-[200px]">
+                    <h2 class="text-lg font-semibold mb-4 text-gray-700">Edit Tag</h2>
+                    <div id="edit-content">
+                        <p class="mb-1 text-sm text-gray-500">Selected:</p>
+                        <p id="selected-tag-text" class="bg-white p-3 rounded-lg font-semibold text-blue-600 break-words mb-4 border"></p>
+                        <label for="scale-slider" id="scale-label" class="block text-sm font-medium text-gray-600 mb-2 cursor-pointer" title="Double-click to reset scale to 0">Scale: <span id="scale-value" class="font-bold text-blue-600">0.00</span></label>
+                        <input type="range" id="scale-slider" min="-5" max="5" step="0.1" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mb-6">
+                        <button id="delete-button" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            Delete Tag
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <footer class="text-center mt-6 text-gray-400 text-sm">
+            <p>Built with Tailwind CSS & JavaScript</p>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div id="history-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h2 class="text-xl font-bold text-gray-800">Full Tag History</h2>
+                <button id="close-history-modal-btn" class="text-gray-400 hover:text-red-600 p-1 rounded-full transition"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div id="full-history-container" class="p-6 overflow-y-auto flex flex-wrap gap-2 content-start"></div>
+        </div>
+    </div>
+    <div id="saved-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h2 class="text-xl font-bold text-gray-800">All Saved Sets</h2>
+                <button id="close-saved-modal-btn" class="text-gray-400 hover:text-red-600 p-1 rounded-full transition"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div id="full-saved-container" class="p-6 overflow-y-auto space-y-3"></div>
+        </div>
+    </div>
+    
+    <div id="toast-container"></div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- ELEMENT SELECTORS ---
+        const tagInput = document.getElementById('tag-input');
+        const tagsContainer = document.getElementById('tags-container');
+        const editPanel = document.getElementById('edit-panel');
+        const selectedTagText = document.getElementById('selected-tag-text');
+        const scaleSlider = document.getElementById('scale-slider');
+        const scaleValue = document.getElementById('scale-value');
+        const scaleLabel = document.getElementById('scale-label');
+        const deleteButton = document.getElementById('delete-button');
+        const noTagsMessage = document.getElementById('no-tags-message');
+        const copyButton = document.getElementById('copy-button');
+        const saveButton = document.getElementById('save-button');
+        const trueClearButton = document.getElementById('true-clear-button');
+        const pasteButton = document.getElementById('paste-button');
+        const pasteError = document.getElementById('paste-error');
+        const savedContainer = document.getElementById('saved-container');
+        const noSavedMessage = document.getElementById('no-saved-message');
+        const savedPreviewWrapper = document.getElementById('saved-preview-wrapper');
+        const savedFade = document.getElementById('saved-fade');
+        const expandSavedBtn = document.getElementById('expand-saved-btn');
+        const savedModal = document.getElementById('saved-modal');
+        const closeSavedModalBtn = document.getElementById('close-saved-modal-btn');
+        const fullSavedContainer = document.getElementById('full-saved-container');
+        const historyContainer = document.getElementById('history-container');
+        const noHistoryMessage = document.getElementById('no-history-message');
+        const historyPreviewWrapper = document.getElementById('history-preview-wrapper');
+        const historyFade = document.getElementById('history-fade');
+        const expandHistoryBtn = document.getElementById('expand-history-btn');
+        const historyModal = document.getElementById('history-modal');
+        const closeHistoryModalBtn = document.getElementById('close-history-modal-btn');
+        const fullHistoryContainer = document.getElementById('full-history-container');
+        const toastContainer = document.getElementById('toast-container');
+        const uploadTagsInput = document.getElementById('upload-tags-input');
+        const autocompleteContainer = document.getElementById('autocomplete-container');
+
+        // --- STATE MANAGEMENT ---
+        let state = {
+            tags: [],
+            savedItems: [],
+            tagHistory: [],
+            quickSlots: {},
+            autocompleteTags: [],
+            selectedTagId: null,
+            draggedTagId: null,
+            nextTagId: 0,
+        };
+        const STORAGE_KEY = 'tagManagerAppState';
+        let autocompleteIndex = -1; 
+        
+        const CSV_URL = 'https://files.catbox.moe/xx6vpd.csv';
+
+        // --- LOCAL STORAGE PERSISTENCE ---
+        function saveState() {
+            try {
+                const stateToSave = { ...state };
+                delete stateToSave.autocompleteTags; 
+                const stateString = JSON.stringify(stateToSave);
+                localStorage.setItem(STORAGE_KEY, stateString);
+            } catch (error) {
+                console.error("Failed to save state to localStorage:", error);
+                showToast("Could not save session", "error");
+            }
+        }
+
+        function loadState() {
+            try {
+                const savedState = localStorage.getItem(STORAGE_KEY);
+                if (savedState) {
+                    const loadedState = JSON.parse(savedState);
+                    Object.assign(state, loadedState);
+                    if (!state.quickSlots) state.quickSlots = {}; // Ensure quickSlots exists
+                }
+            } catch (error) {
+                console.error("Failed to load state from localStorage:", error);
+                localStorage.removeItem(STORAGE_KEY); 
+            }
+        }
+        
+        // --- UI FEEDBACK ---
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
+        }
+
+        // --- RENDER FUNCTIONS ---
+        function renderAll() {
+            renderTags();
+            renderSavedItems();
+            renderTagHistory();
+            renderQuickSlots();
+        }
+
+        function renderTags() {
+            tagsContainer.innerHTML = '';
+            const hasTags = state.tags.length > 0;
+            copyButton.disabled = !hasTags;
+            saveButton.disabled = !hasTags;
+            trueClearButton.disabled = !hasTags;
+            noTagsMessage.style.display = hasTags ? 'none' : 'block';
+            state.tags.forEach((tag, index) => {
+                const tagElement = document.createElement('span');
+                tagElement.className = 'tag-item cursor-pointer px-3 py-1.5 text-sm font-medium rounded-full transition inline-block align-middle';
+                tagElement.draggable = true;
+                tagElement.dataset.id = tag.id;
+                tagElement.title = "Click to select, double-click to delete";
+                let displayText = tag.text;
+                if (tag.scale && tag.scale !== "0.00" && tag.scale !== 0) displayText += `:${tag.scale}`;
+                tagElement.textContent = displayText;
+                if (tag.id === state.selectedTagId) {
+                    tagElement.classList.add('bg-blue-500', 'text-white', 'ring-2', 'ring-blue-300');
+                } else {
+                    tagElement.classList.add('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
+                }
+                tagElement.addEventListener('click', (e) => { e.stopPropagation(); selectTag(tag.id); });
+                tagElement.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    if (state.selectedTagId === tag.id) deselectAll();
+                    state.tags = state.tags.filter(t => t.id !== tag.id);
+                    saveState();
+                    renderAll();
+                });
+                tagElement.addEventListener('dragstart', (e) => handleDragStart(e, tag.id));
+                tagElement.addEventListener('dragend', handleDragEnd);
+                tagsContainer.appendChild(tagElement);
+                if (index < state.tags.length - 1) {
+                    const comma = document.createElement('span');
+                    comma.textContent = ', ';
+                    comma.className = "align-middle";
+                    tagsContainer.appendChild(comma);
+                }
+            });
+        }
+
+        function createSavedItemElement(savedItem) {
+            const savedElement = document.createElement('div');
+            savedElement.className = 'bg-white p-2.5 rounded-lg shadow-sm border flex justify-between items-center';
+            savedElement.dataset.id = savedItem.id;
+            const starSVG = savedItem.starred ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>` : `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>`;
+            const deleteButtonDisabled = savedItem.starred ? 'disabled' : '';
+            const deleteButtonClasses = savedItem.starred ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-100';
+            savedElement.innerHTML = `<div class="flex-1 min-w-0 cursor-pointer hover:bg-gray-50 p-1 rounded" title="Load this set"><p class="saved-item-name font-medium text-gray-800 text-sm break-words inline-block" title="Click to rename">${savedItem.name}</p><p class="text-xs text-gray-500 mt-1 pointer-events-none">${savedItem.tags.length} tags</p></div><div class="flex items-center ml-2"><button class="star-btn p-1.5 ${savedItem.starred ? 'text-yellow-400' : 'text-gray-400'} hover:text-yellow-500 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-colors">${starSVG}</button><button class="delete-saved-item-btn p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-red-400 transition-colors ${deleteButtonClasses}" ${deleteButtonDisabled}><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg></button></div>`;
+            savedElement.querySelector('.flex-1').addEventListener('click', () => { loadSavedItem(savedItem.id); closeModal(savedModal); });
+            savedElement.querySelector('.saved-item-name').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = savedItem.name;
+                input.className = 'w-full text-sm font-medium bg-white border border-blue-400 rounded px-1 py-0 focus:outline-none focus:ring-1 focus:ring-blue-500';
+                const saveName = () => {
+                    const newName = input.value.trim();
+                    if (newName && newName !== savedItem.name) {
+                        savedItem.name = newName;
+                        saveState();
+                    }
+                    renderSavedItems();
+                };
+                input.addEventListener('blur', saveName);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') input.blur();
+                    if (e.key === 'Escape') { input.value = savedItem.name; input.blur(); }
+                });
+                e.target.replaceWith(input);
+                input.focus();
+                input.select();
+            });
+            savedElement.querySelector('.star-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleStar(savedItem.id); });
+            savedElement.querySelector('.delete-saved-item-btn').addEventListener('click', (e) => { e.stopPropagation(); deleteSavedItem(savedItem.id); });
+            return savedElement;
+        }
+
+        function renderSavedItems() {
+            savedContainer.innerHTML = '';
+            fullSavedContainer.innerHTML = '';
+            noSavedMessage.style.display = state.savedItems.length === 0 ? 'block' : 'none';
+            if (state.savedItems.length > 0) {
+                 state.savedItems.forEach(item => fullSavedContainer.appendChild(createSavedItemElement(item)));
+                 state.savedItems.slice(0, 3).forEach(item => savedContainer.appendChild(createSavedItemElement(item)));
+            }
+            const isOverflowing = state.savedItems.length > 3;
+            savedFade.classList.toggle('hidden', !isOverflowing);
+            expandSavedBtn.classList.toggle('hidden', state.savedItems.length === 0);
+        }
+
+        function renderTagHistory() {
+            historyContainer.innerHTML = '';
+            fullHistoryContainer.innerHTML = '';
+            const activeTagTexts = new Set(state.tags.map(tag => tag.text));
+            const filteredHistory = state.tagHistory.filter(historyTag => !activeTagTexts.has(historyTag.text));
+            noHistoryMessage.style.display = filteredHistory.length === 0 ? 'block' : 'none';
+            if (filteredHistory.length === 0) {
+                noHistoryMessage.textContent = state.tagHistory.length > 0 ? "All history tags are currently active." : "Your recently used tags will appear here.";
+            }
+            filteredHistory.forEach(historyTag => {
+                const tagElement = document.createElement('span');
+                tagElement.className = 'cursor-pointer px-2.5 py-1 text-xs font-medium rounded-full transition bg-gray-200 text-gray-700 hover:bg-gray-300';
+                tagElement.textContent = historyTag.text;
+                const addTagOnClick = () => addTag(historyTag.text);
+                tagElement.addEventListener('click', addTagOnClick);
+                const fullViewTagElement = tagElement.cloneNode(true);
+                fullViewTagElement.addEventListener('click', addTagOnClick);
+                historyContainer.appendChild(tagElement);
+                fullHistoryContainer.appendChild(fullViewTagElement);
+            });
+            const checkHistoryOverflow = () => {
+                const isOverflowing = historyContainer.scrollHeight > historyPreviewWrapper.clientHeight;
+                historyFade.classList.toggle('hidden', !isOverflowing);
+                expandHistoryBtn.classList.toggle('hidden', state.tagHistory.length === 0);
+            };
+            setTimeout(checkHistoryOverflow, 0);
+        }
+
+        function renderQuickSlots() {
+            document.querySelectorAll('.quick-slot-btn').forEach(btn => {
+                const slot = btn.dataset.slot;
+                const hasData = state.quickSlots[slot] && state.quickSlots[slot].length > 0;
+                if(hasData) {
+                    btn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-default');
+                    btn.classList.add('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+                    btn.title = `C${slot}: Click to load ${state.quickSlots[slot].length} tags. Hold to overwrite.`;
+                } else {
+                    btn.classList.add('bg-gray-300', 'text-gray-500', 'cursor-default');
+                    btn.classList.remove('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+                    btn.title = `C${slot}: Empty. Hold to save current tags.`;
+                }
+            });
+        }
+        
+        // --- CORE LOGIC & EVENT HANDLERS ---
+        function processAndAddTags(inputText) {
+            const tagTexts = inputText.split(',').map(t => t.trim()).filter(t => t);
+            let wasTagAdded = false;
+            tagTexts.forEach(text => {
+                if (!state.tags.some(tag => tag.text === text)) {
+                    const newTag = { id: state.nextTagId++, text: text, scale: "0.00" };
+                    state.tags.push(newTag);
+                    wasTagAdded = true;
+                }
+                updateTagHistory(text);
+            });
+            if (wasTagAdded) {
+                saveState();
+                renderAll();
+            }
+        }
+        
+        function addTag(text) {
+            if (state.tags.some(tag => tag.text === text)) return;
+            const newTag = { id: state.nextTagId++, text: text, scale: "0.00" };
+            state.tags.push(newTag);
+            updateTagHistory(text);
+            saveState();
+            renderAll();
+        }
+
+        function updateTagHistory(text) {
+            const existingIndex = state.tagHistory.findIndex(t => t.text === text);
+            if (existingIndex > -1) state.tagHistory.splice(existingIndex, 1);
+            state.tagHistory.unshift({ text: text });
+            if (state.tagHistory.length > 50) state.tagHistory.pop();
+        }
+        
+        function selectTag(id) {
+            state.selectedTagId = id;
+            const selectedTag = state.tags.find(tag => tag.id === id);
+            if (selectedTag) {
+                selectedTagText.textContent = selectedTag.text;
+                const currentScale = selectedTag.scale || "0.00";
+                scaleSlider.value = currentScale;
+                scaleValue.textContent = parseFloat(currentScale).toFixed(2);
+                editPanel.classList.remove('opacity-0', 'scale-95', '-translate-x-4', 'pointer-events-none');
+            }
+            renderTags();
+        }
+
+        function deselectAll() {
+            if (state.selectedTagId === null) return;
+            state.selectedTagId = null;
+            editPanel.classList.add('opacity-0', 'scale-95', '-translate-x-4', 'pointer-events-none');
+            renderTags();
+        }
+
+        function loadSavedItem(id) {
+            const itemToLoad = state.savedItems.find(item => item.id === id);
+            if (itemToLoad) {
+                state.tags = JSON.parse(JSON.stringify(itemToLoad.tags)); 
+                deselectAll();
+                saveState();
+                renderAll();
+                showToast(`Loaded "${itemToLoad.name}"`, 'info');
+            }
+        }
+
+        function deleteSavedItem(id) {
+            const item = state.savedItems.find(item => item.id === id);
+            if (item && item.starred) {
+                showToast("Cannot delete a starred item.", "error");
+                return;
+            };
+            state.savedItems = state.savedItems.filter(item => item.id !== id);
+            saveState();
+            renderSavedItems();
+            showToast("Saved set deleted.", "info");
+        }
+        
+        function toggleStar(id) {
+            const itemToStar = state.savedItems.find(item => item.id === id);
+            if (itemToStar) {
+                itemToStar.starred = !itemToStar.starred;
+                saveState();
+                renderSavedItems();
+            }
+        }
+        
+        tagInput.addEventListener('keydown', (e) => {
+            const items = autocompleteContainer.querySelectorAll('.autocomplete-item');
+            if (!autocompleteContainer.classList.contains('hidden') && items.length > 0) {
+                 if (e.key === 'ArrowDown') {
+                     e.preventDefault();
+                     autocompleteIndex = (autocompleteIndex + 1) % items.length;
+                     updateActiveAutocompleteItem(items);
+                 } else if (e.key === 'ArrowUp') {
+                     e.preventDefault();
+                     autocompleteIndex = (autocompleteIndex - 1 + items.length) % items.length;
+                     updateActiveAutocompleteItem(items);
+                 } else if (e.key === 'Enter' && autocompleteIndex > -1) {
+                     e.preventDefault();
+                     items[autocompleteIndex].click();
+                     tagInput.value = '';
+                 } else if (e.key === 'Escape') {
+                     autocompleteContainer.classList.add('hidden');
+                 }
+            } else if (e.key === 'Enter' && tagInput.value.trim() !== '') {
+                e.preventDefault();
+                processAndAddTags(tagInput.value.trim());
+                tagInput.value = '';
+            }
+        });
+
+        pasteButton.addEventListener('click', async () => {
+            pasteError.classList.add('hidden');
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) processAndAddTags(text);
+            } catch (err) {
+                pasteError.classList.remove('hidden');
+                setTimeout(() => pasteError.classList.add('hidden'), 4000);
+            }
+        });
+
+        scaleSlider.addEventListener('input', () => {
+            if (state.selectedTagId === null) return;
+            const tag = state.tags.find(t => t.id === state.selectedTagId);
+            if (tag) {
+                tag.scale = parseFloat(scaleSlider.value).toFixed(2);
+                scaleValue.textContent = tag.scale;
+                saveState();
+                renderTags();
+            }
+        });
+
+        scaleLabel.addEventListener('dblclick', () => {
+            if (state.selectedTagId === null) return;
+            const tag = state.tags.find(t => t.id === state.selectedTagId);
+            if (tag) {
+                tag.scale = "0.00";
+                scaleSlider.value = 0;
+                scaleValue.textContent = "0.00";
+                saveState();
+                renderTags();
+            }
+        });
+
+        deleteButton.addEventListener('click', () => {
+            if (state.selectedTagId === null) return;
+            state.tags = state.tags.filter(tag => tag.id !== state.selectedTagId);
+            deselectAll();
+            saveState();
+            renderAll();
+        });
+        
+        document.body.addEventListener('click', (e) => {
+             if (!editPanel.contains(e.target) && !e.target.closest('.tag-item')) deselectAll();
+             if (e.target !== tagInput && !autocompleteContainer.contains(e.target)) autocompleteContainer.classList.add('hidden');
+        });
+
+        saveButton.addEventListener('click', () => {
+            if (state.tags.length === 0) return;
+            const tagPreview = state.tags.slice(0, 3).map(tag => tag.text).join(', ');
+            const defaultName = `${tagPreview}${state.tags.length > 3 ? ', ...' : ''}`;
+            state.savedItems.unshift({ id: Date.now(), name: defaultName, tags: JSON.parse(JSON.stringify(state.tags)), starred: false });
+            if (state.savedItems.length > 20) {
+                const lastUnstarredIndex = state.savedItems.findLastIndex(item => !item.starred);
+                if (lastUnstarredIndex !== -1) state.savedItems.splice(lastUnstarredIndex, 1);
+            }
+            state.tags = [];
+            deselectAll();
+            saveState();
+            renderAll();
+            showToast('Tag set saved!', 'success');
+        });
+        
+        trueClearButton.addEventListener('click', () => {
+            if (state.tags.length === 0) return;
+            state.tags = [];
+            deselectAll();
+            saveState();
+            renderAll();
+            showToast("Workspace cleared", "info");
+        });
+
+        copyButton.addEventListener('click', () => {
+            if (state.tags.length === 0) return;
+            const tagString = state.tags.map(tag => {
+                let displayText = tag.text;
+                if (tag.scale && tag.scale !== "0.00" && tag.scale !== 0) displayText += `:${tag.scale}`;
+                return displayText;
+            }).join(', ');
+            const textArea = document.createElement('textarea');
+            textArea.value = tagString;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied to clipboard!', 'success');
+            } catch (err) {
+                showToast('Copy failed!', 'error');
+            }
+            document.body.removeChild(textArea);
+        });
+        
+        function handleDragStart(e, id) {
+            state.draggedTagId = id;
+            setTimeout(() => e.target.classList.add('dragging'), 0);
+        }
+        function handleDragEnd(e) { e.target.classList.remove('dragging'); }
+        function handleDragOver(e) { e.preventDefault(); }
+        function handleDrop(e) {
+            e.preventDefault();
+            if (state.draggedTagId === null) return;
+            const draggedItem = state.tags.find(t => t.id === state.draggedTagId);
+            if (!draggedItem) return;
+            let remainingTags = state.tags.filter(t => t.id !== state.draggedTagId);
+            const dropTargetElement = e.target.closest('.tag-item');
+            let insertAtIndex = remainingTags.length;
+            if (dropTargetElement) {
+                const dropTargetId = parseInt(dropTargetElement.dataset.id, 10);
+                const dropIndex = remainingTags.findIndex(t => t.id === dropTargetId);
+                const dropTargetRect = dropTargetElement.getBoundingClientRect();
+                const isAfter = e.clientX > (dropTargetRect.left + dropTargetRect.width / 2);
+                insertAtIndex = isAfter ? dropIndex + 1 : dropIndex;
+            }
+            remainingTags.splice(insertAtIndex, 0, draggedItem);
+            state.tags = remainingTags;
+            state.draggedTagId = null;
+            saveState();
+            renderTags(); 
+        }
+        tagsContainer.addEventListener('dragover', handleDragOver);
+        tagsContainer.addEventListener('drop', handleDrop);
+        
+        function openModal(modalElement) {
+            modalElement.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            setTimeout(() => {
+                modalElement.style.opacity = '1';
+                modalElement.querySelector('div').classList.remove('scale-95');
+            }, 10);
+        }
+        function closeModal(modalElement) {
+            modalElement.style.opacity = '0';
+            modalElement.querySelector('div').classList.add('scale-95');
+            setTimeout(() => {
+                modalElement.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+            }, 300);
+        }
+        expandHistoryBtn.addEventListener('click', () => openModal(historyModal));
+        closeHistoryModalBtn.addEventListener('click', () => closeModal(historyModal));
+        historyModal.addEventListener('click', (e) => { if(e.target === historyModal) closeModal(historyModal); });
+        expandSavedBtn.addEventListener('click', () => openModal(savedModal));
+        closeSavedModalBtn.addEventListener('click', () => closeModal(savedModal));
+        savedModal.addEventListener('click', (e) => { if(e.target === savedModal) closeModal(savedModal); });
+
+        // --- QUICK SLOTS ---
+        function initQuickSlots() {
+            document.querySelectorAll('.quick-slot-btn').forEach(btn => {
+                let pressTimer;
+                let longPress = false;
+
+                const startPress = () => {
+                    longPress = false;
+                    pressTimer = setTimeout(() => {
+                        longPress = true;
+                        const slot = btn.dataset.slot;
+                        if (state.tags.length === 0) {
+                            showToast(`Cannot save an empty set to C${slot}.`, 'error');
+                            return;
+                        }
+                        state.quickSlots[slot] = JSON.parse(JSON.stringify(state.tags));
+                        saveState();
+                        renderQuickSlots();
+                        showToast(`Current tags saved to C${slot}.`, 'success');
+                    }, 750); // 750ms for a long press
+                };
+
+                const cancelPress = () => {
+                    clearTimeout(pressTimer);
+                };
+
+                const endPress = () => {
+                    clearTimeout(pressTimer);
+                    if (!longPress) {
+                        const slot = btn.dataset.slot;
+                        if (state.quickSlots[slot] && state.quickSlots[slot].length > 0) {
+                            state.tags = JSON.parse(JSON.stringify(state.quickSlots[slot]));
+                            deselectAll();
+                            saveState(); // Save the main state after loading
+                            renderAll();
+                            showToast(`Loaded tags from C${slot}.`, 'info');
+                        } else {
+                           // Do nothing if the slot is empty
+                        }
+                    }
+                };
+                
+                btn.addEventListener('mousedown', startPress);
+                btn.addEventListener('mouseup', endPress);
+                btn.addEventListener('mouseleave', cancelPress);
+                btn.addEventListener('touchstart', startPress);
+                btn.addEventListener('touchend', endPress);
+            });
+        }
+
+        // --- AUTOCOMPLETE LOGIC ---
+        function parseAndSetAutocompleteTags(text, source = 'web') {
+            const lines = text.split(/\r?\n/);
+            const parsedTags = lines
+                .map(line => {
+                    const parts = line.split(',');
+                    if (parts.length === 2) {
+                        const text = parts[0].trim().replace(/_/g, ' ');
+                        const rating = parseInt(parts[1].trim(), 10);
+                        if (text && !isNaN(rating)) return { text, rating };
+                    }
+                    return null;
+                }).filter(Boolean);
+
+            if (parsedTags.length === 0) {
+                showToast(`Loaded data from ${source} is empty or invalid.`, "error");
+                return;
+            }
+            state.autocompleteTags = parsedTags;
+            showToast(`Loaded ${parsedTags.length} tags from ${source} for autocomplete.`, "success");
+        }
+        
+        async function loadAutocompleteFromURL(url) {
+            showToast("Loading autocomplete tags...", "info");
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const text = await response.text();
+                parseAndSetAutocompleteTags(text, 'web');
+            } catch (error) {
+                showToast("Failed to load tags from the web.", "error");
+            }
+        }
+        
+        uploadTagsInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.name.endsWith('.txt') && !file.name.endsWith('.csv')) {
+                showToast("Please upload a valid .txt or .csv file", "error");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => parseAndSetAutocompleteTags(event.target.result, 'file');
+            reader.onerror = () => showToast("Failed to read the file.", "error");
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        function updateActiveAutocompleteItem(items) {
+            items.forEach(item => item.classList.remove('active'));
+            if (autocompleteIndex > -1) {
+                items[autocompleteIndex].classList.add('active');
+                items[autocompleteIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        tagInput.addEventListener('input', () => {
+            const query = tagInput.value.trim().toLowerCase();
+            if (query.length === 0 || state.autocompleteTags.length === 0) {
+                autocompleteContainer.classList.add('hidden');
+                return;
+            }
+            const searchInput = query.replace(/ /g, '_');
+            const filtered = state.autocompleteTags
+                .filter(tag => tag.text.replace(/ /g, '_').startsWith(searchInput))
+                .sort((a, b) => b.rating - a.rating)
+                .slice(0, 10);
+            autocompleteContainer.innerHTML = '';
+            if (filtered.length === 0) {
+                autocompleteContainer.classList.add('hidden');
+                return;
+            }
+            filtered.forEach((tag) => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-item flex justify-between items-center';
+                item.innerHTML = `<span class="tag-name">${tag.text}</span> <span class="tag-rating">${tag.rating.toLocaleString()}</span>`;
+                item.addEventListener('click', () => {
+                    addTag(tag.text);
+                    tagInput.value = '';
+                    autocompleteContainer.classList.add('hidden');
+                });
+                autocompleteContainer.appendChild(item);
+            });
+            autocompleteIndex = -1;
+            autocompleteContainer.classList.remove('hidden');
+        });
+
+        // --- INITIALIZATION ---
+        loadState();
+        loadAutocompleteFromURL(CSV_URL);
+        initQuickSlots();
+        renderAll();
+    });
+    </script>
+</body>
+</html>
+
